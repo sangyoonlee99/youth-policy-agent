@@ -1,0 +1,6 @@
+requests>=2.31
+pyyaml>=6.0
+openpyxl>=3.1     # 인적사항 입력 엑셀 읽기 + 매칭 결과 엑셀 출력
+anthropic>=0.40   # 자유 텍스트 자격조건 LLM 판정(소프트 필터)에 사용. 없어도 나머지는 동작함.
+beautifulsoup4>=4.12   # 청년몽땅정보통(seoul_youth_client.py) HTML 파싱 — API 없는 소스라 크롤링
+lxml>=4.9              # beautifulsoup4 파서 백엔드

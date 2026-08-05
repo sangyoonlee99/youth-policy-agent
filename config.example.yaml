@@ -1,0 +1,43 @@
+# 이 파일을 config.yaml로 복사한 뒤 값을 채우세요.
+# cp config.example.yaml config.yaml
+
+api:
+  base_url: "https://www.youthcenter.go.kr/go/ythip/getPlcy"
+  api_key: "YOUR_API_KEY_HERE"   # 온통청년 로그인 > 마이페이지 > OPEN API 에서 발급
+  page_size: 100
+
+profile:
+  # profile_template.xlsx를 열어서 '내정보' 시트 3행(노란색)에 내 정보를 채운 뒤
+  # profile.xlsx 라는 이름으로 저장하고 아래 file 경로를 맞추세요.
+  file: "profile.xlsx"
+
+  # file을 안 쓰고 싶으면 위 줄을 지우고 아래처럼 인라인으로 값을 넣어도 됨(테스트용):
+  # birth_year: 2000
+  # region_code: "11"
+  # marital_status: "미혼"
+  # annual_income_10k: 3000
+  # education_status: "대학 졸업"
+  # employment_status: "중소기업 재직 2년차"
+  # specialization: "컴퓨터공학"
+  # household_type: "일반"
+  # military_status: "군필"
+  # interests: ["일자리", "주거"]
+  # notes: ""
+
+output:
+  path: "output/matched_policies.xlsx"
+  # 상태 변화 없이 지난 회차에 이미 보여준 정책은 이번 결과에서 빼기(true, 기본값).
+  # 신청예정->신청가능처럼 더 액션 가능해지면 상태와 무관하게 다시 뜸. 매주 전체
+  # 목록을 계속 다 보고 싶으면 false로.
+  hide_repeats: true
+
+sources:
+  # 청년몽땅정보통(youth.seoul.go.kr) 크롤링 — 공식 API가 없어서 HTML 파싱으로 가져옴
+  # (src/seoul_youth_client.py). profile의 거주_시군구가 서울 자치구일 때만 동작하고,
+  # 그 외 지역이면 자동으로 건너뜀. 끄고 싶으면 enabled: false.
+  seoul_youth:
+    enabled: true
+    # 목록뿐 아니라 항목별 상세페이지까지 긁어서 자격조건 텍스트(LLM 소프트필터용)와
+    # 실제 신청링크까지 가져올지. 마감 안 된 항목만 대상이라 보통 대여섯 페이지 정도
+    # 추가 요청이 들고, 매주 실행 기준 몇 분 정도 더 걸림. 끄면 목록 정보만 씀(빠름).
+    fetch_details: true
