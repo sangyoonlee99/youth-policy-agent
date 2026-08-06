@@ -252,7 +252,14 @@ def main():
               "해당 정책들은 '검토 필요'로 표시됩니다.")
 
     out_cfg = cfg.get("output", {})
-    hide_repeats = out_cfg.get("hide_repeats", True)
+    # 기본값 false (2026-08-05 변경, issue #3): '매칭결과'/'확인필요' 시트는
+    # 새 소식 피드가 아니라 '지금 유효한 것 전부' 목록이어야 한다. 상태가
+    # 안 바뀌었다고 화면에서 빼버리면 사용자가 아직 신청 안 한 걸 놓칠 수 있어서
+    # 기본은 항상 다 보여주는 쪽으로 바꿈. LLM 재호출 방지(verdict 캐싱)나
+    # 소스 간 중복 제거는 이거랑 별개로 계속 동작함 — '화면 노출'과 '중복 작업
+    # 방지'는 다른 문제였음. 그래도 반복 노출 억제가 필요한 경우가 생기면
+    # config.yaml에 hide_repeats: true로 다시 켤 수 있음.
+    hide_repeats = out_cfg.get("hide_repeats", False)
 
     state = None if args.mock else collector_state.load()
     results = apply_soft_filter(results, profile, use_llm, state=state, hide_repeats=hide_repeats)
