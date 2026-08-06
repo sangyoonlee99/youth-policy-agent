@@ -224,11 +224,20 @@ def normalize(raw_item: dict, sigungu: str, key: str = DEFAULT_KEY, today: date 
         try:
             mm, dd = int(m.group(1)), int(m.group(2))
             candidate = date(today.year, mm, dd)
-            if status != "마감" and candidate < today:
-                candidate = date(today.year + 1, mm, dd)
-            deadline_str = candidate.strftime("%Y%m%d")
         except ValueError:
-            deadline_str = ""  # 말이 안 되는 월/일이면 그냥 못 뽑은 걸로 처리
+            candidate = None  # 말이 안 되는 월/일이면 그냥 못 뽑은 걸로 처리
+
+        # 2026-08-06 실측(issue #4)으로 "다음 해로 추정"하던 로직을 제거함:
+        # 상태 배지가 '마감'이 아닌데 날짜가 이미 지난 경우, 예전엔 "내년
+        # 거겠지"하고 date(today.year+1, ...)로 밀었었다. 근데 실제로는 상태
+        # 배지가 '상시'인 채로 그냥 오래 방치된(이미 끝난) 글도 많아서, 이미
+        # 끝난 2026년 공고를 2027년 공고로 잘못 표시하는 사고가 났다. 추정이
+        # 틀렸을 때 위험이 크므로(끝난 걸 열려있다고 보여주는 것), 이런 경우는
+        # 그냥 마감일을 '모른다'로 남겨서 확인필요로 보낸다 — 미래 연도를
+        # 지어내지 않는다. 마감 상태면 지난 날짜가 오히려 정확한 정보이므로
+        # 그대로 쓴다.
+        if candidate is not None and (status == "마감" or candidate >= today):
+            deadline_str = candidate.strftime("%Y%m%d")
 
     view_url = f"{VIEW_URL}?sprtInfoId={raw_item['id']}&key={key}"
     apply_url = detail.get("external_url") or view_url

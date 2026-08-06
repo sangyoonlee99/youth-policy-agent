@@ -3,6 +3,7 @@
 python -m tests.test_seoul_youth_client 로 실행 가능."""
 
 import sys
+from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -103,6 +104,31 @@ def test_normalize_with_detail_prefers_detail_period_and_external_link():
 def test_normalize_zip_code_matches_sigungu():
     row = normalize(_raw_item(), "광진구")
     assert row["zipCd"] == "11215"
+
+
+def test_normalize_does_not_fabricate_future_year_for_stale_non_closed_item():
+    """issue #4 회귀 테스트. 상태 배지가 '마감'이 아닌데(예: '상시') 제목의
+    날짜가 이미 지났으면, 예전엔 내년으로 추정해서 잘못된 미래 마감일을
+    만들어냈다(실제로 이미 끝난 2026년 공고를 2027년으로 표시하는 사고).
+    이제는 그냥 마감일을 비워서 확인필요로 보내야 한다."""
+    item = _raw_item(title="오래된 공고(~6/12)", state_text="상시")
+    row = normalize(item, "광진구", today=date(2026, 8, 6))
+    assert row["aplyYmd"] == ""
+
+
+def test_normalize_keeps_past_date_when_status_is_closed():
+    """상태가 진짜 '마감'이면 지난 날짜가 오히려 정확한 정보이므로 그대로 쓴다."""
+    item = _raw_item(title="마감된 공고(~6/12)", state_text="마감")
+    row = normalize(item, "광진구", today=date(2026, 8, 6))
+    assert row["aplyYmd"] == "20260612"
+
+
+def test_normalize_uses_future_date_as_is_without_rollover():
+    """날짜가 아직 안 지났으면(오늘 이후) 상태와 무관하게 그대로 쓴다 — 이 경로엔
+    이번 수정이 영향을 주지 않아야 한다."""
+    item = _raw_item(title="예정된 공고(~9/1)", state_text="상시")
+    row = normalize(item, "광진구", today=date(2026, 8, 6))
+    assert row["aplyYmd"] == "20260901"
 
 
 if __name__ == "__main__":
