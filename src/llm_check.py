@@ -11,6 +11,8 @@ ANTHROPIC_API_KEY 환경변수가 없으면 이 단계는 건너뛰고 not_sure�
 
 import json
 import os
+import re
+import time
 
 try:
     import anthropic
@@ -37,8 +39,24 @@ def is_available() -> bool:
     return anthropic is not None and bool(os.environ.get("ANTHROPIC_API_KEY"))
 
 
-def check_free_text_eligibility(profile_summary: str, condition_text: str, model: str = DEFAULT_MODEL) -> dict:
-    """condition_text가 비어있으면 바로 eligible 처리, LLM 미설정이면 not_sure."""
+_FENCE_RE = re.compile(r"^```[a-zA-Z]*\s*|\s*```$")
+
+
+def _strip_code_fence(text: str) -> str:
+    """모델이 시스템 프롬프트 지시(다른 텍스트 붙이지 말라)를 무시하고 응답을
+    ```json ... ``` 로 감싸는 경우가 실측으로 확인됐다(claude-haiku-4-5).
+    그대로 json.loads하면 매번 파싱 실패로 떨어져서 LLM이 실제로 응답했어도
+    항상 not_sure가 되는 문제가 있었음 — 펜스만 벗겨내고 파싱한다."""
+    return _FENCE_RE.sub("", text.strip()).strip()
+
+
+def check_free_text_eligibility(profile_summary: str, condition_text: str, model: str = DEFAULT_MODEL,
+                                 max_retries: int = 2, retry_delay: float = 2.0) -> dict:
+    """condition_text가 비어있으면 바로 eligible 처리, LLM 미설정이면 not_sure.
+
+    네트워크 오류 등 일시적 실패는 `max_retries`번까지 재시도한다 — 크레딧 부족
+    같은 영구적 오류는 재시도해도 어차피 실패하지만, 재시도 비용이 미미해서
+    구분하지 않고 그냥 재시도한다."""
     if not condition_text or not str(condition_text).strip():
         return {"verdict": "eligible", "reason": "추가 자격조건 텍스트 없음"}
 
@@ -47,15 +65,30 @@ def check_free_text_eligibility(profile_summary: str, condition_text: str, model
 
     client = anthropic.Anthropic()
     user_msg = f"[신청자 프로필]\n{profile_summary}\n\n[정책 추가 자격조건]\n{condition_text}"
-    resp = client.messages.create(
-        model=model,
-        max_tokens=200,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user_msg}],
-    )
+
+    resp = None
+    last_exc = None
+    for attempt in range(max_retries + 1):
+        try:
+            resp = client.messages.create(
+                model=model,
+                max_tokens=200,
+                system=SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": user_msg}],
+            )
+            break
+        except Exception as e:  # 크레딧 부족, 네트워크 오류 등: 전체 실행을 멈추지 않고 다음 회차에 재판정
+            last_exc = e
+            if attempt < max_retries:
+                time.sleep(retry_delay)
+    if resp is None:
+        detail = str(last_exc)[:150] or type(last_exc).__name__
+        return {"verdict": "not_sure",
+                "reason": f"LLM 호출 실패({type(last_exc).__name__}: {detail}) — 다음 실행 때 다시 판정"}
+
     raw = resp.content[0].text.strip()
     try:
-        parsed = json.loads(raw)
+        parsed = json.loads(_strip_code_fence(raw))
         if parsed.get("verdict") not in ("eligible", "excluded", "not_sure"):
             raise ValueError("unexpected verdict")
         return parsed

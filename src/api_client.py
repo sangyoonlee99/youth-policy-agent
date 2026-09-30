@@ -18,11 +18,21 @@ jobCd/plcyMajorCd가 콤마로 구분된 다중값일 수 있음, bizPrdSeCd는 
 표기가 실제와 다름 — 전부 matcher.py에 수정 반영).
 """
 
+import re
 import time
 
 import requests
 
 BASE_URL = "https://www.youthcenter.go.kr/go/ythip/getPlcy"
+
+_KEY_PARAM_RE = re.compile(r"(apiKeyNm=)[^&\s'\"]+", re.IGNORECASE)
+
+
+def mask_secrets(text) -> str:
+    """오류 메시지에 요청 URL이 그대로 들어있는 경우(requests 예외가 흔히 그렇다)를
+    대비해 apiKeyNm= 뒤의 키 값을 가린다. 로그와 결과 엑셀의 '안내' 시트에 키가
+    그대로 찍히는 것을 막기 위함."""
+    return _KEY_PARAM_RE.sub(r"\1***", str(text))
 
 
 class YouthCenterClient:
@@ -68,7 +78,7 @@ class YouthCenterClient:
 
             if items is None:
                 print(f"[안내] 온통청년 {page}페이지 조회가 {max_retries + 1}번 다 실패했습니다"
-                      f"({last_exc}). 지금까지 모은 {len(all_items)}건까지만 쓰고 중단합니다.")
+                      f"({mask_secrets(last_exc)}). 지금까지 모은 {len(all_items)}건까지만 쓰고 중단합니다.")
                 break
 
             if not items:

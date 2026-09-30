@@ -44,3 +44,8 @@ sources:
     # 실제 신청링크까지 가져올지. 마감 안 된 항목만 대상이라 보통 대여섯 페이지 정도
     # 추가 요청이 들고, 매주 실행 기준 몇 분 정도 더 걸림. 끄면 목록 정보만 씀(빠름).
     fetch_details: true
+
+llm:
+  # 자유 텍스트 자격조건 AI 판정용 Anthropic API 키 (console.anthropic.com에서 발급)
+  # 환경변수 ANTHROPIC_API_KEY가 있으면 그쪽이 우선함
+  api_key: ""

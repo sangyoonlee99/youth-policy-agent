@@ -5,3 +5,4 @@ data/collector_state.json
 __pycache__/
 *.pyc
 .venv/
+logs/

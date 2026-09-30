@@ -19,11 +19,13 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+import os
+
 import yaml
 
 from . import collector_state
 from . import dedup
-from .api_client import YouthCenterClient
+from .api_client import YouthCenterClient, mask_secrets
 from .llm_check import check_free_text_eligibility, is_available
 from .matcher import FIELD_MAP, Profile, match
 from .output_xlsx import compute_deadline_and_status, save_xlsx
@@ -121,8 +123,9 @@ def fetch_all_sources(cfg: dict, profile: Profile, mock: bool):
             p.setdefault("_source", SOURCE_YOUTHCENTER)
         source_counts[SOURCE_YOUTHCENTER] = {"count": len(yc_policies)}
     except Exception as e:
-        source_counts[SOURCE_YOUTHCENTER] = {"error": str(e)}
-        print(f"[오류] {SOURCE_YOUTHCENTER} 수집 실패: {e}")
+        error_msg = mask_secrets(e)
+        source_counts[SOURCE_YOUTHCENTER] = {"error": error_msg}
+        print(f"[오류] {SOURCE_YOUTHCENTER} 수집 실패: {error_msg}")
 
     sy_policies = []
     seoul_cfg = (cfg.get("sources") or {}).get("seoul_youth", {})
@@ -150,6 +153,13 @@ def fetch_all_sources(cfg: dict, profile: Profile, mock: bool):
             source_counts[SOURCE_SEOUL_YOUTH]["count"] = len(sy_policies)
 
     return yc_policies + sy_policies, source_counts
+
+
+def _is_unjudged(cached) -> bool:
+    """AI 판정을 실제로 하지 못한 채 저장된 결과(키 없음, 호출 실패)는 캐시로 인정하지 않는다.
+    이걸 캐시로 쓰면 나중에 키를 연결해도 해당 정책은 영원히 판정되지 않는다."""
+    verdict, reason = cached
+    return verdict == "not_sure" and str(reason).startswith(("LLM 생략", "LLM 호출 실패", "ANTHROPIC_API_KEY 미설정"))
 
 
 def apply_soft_filter(results: list, profile: Profile, use_llm: bool, state: dict = None,
@@ -182,7 +192,7 @@ def apply_soft_filter(results: list, profile: Profile, use_llm: bool, state: dic
             if hide_repeats:
                 r["_suppress"] = not collector_state.should_show(state, source, policy_id, status)
             cached = collector_state.get_cached_verdict(state, source, policy_id, condition_text)
-            if cached:
+            if cached and not (use_llm and _is_unjudged(cached)):
                 r["verdict"], r["verdict_reason"] = cached
                 collector_state.record(state, source, policy_id, condition_text, r["verdict"], r["verdict_reason"],
                                         status=status)
@@ -236,6 +246,11 @@ def main():
         print(f"원시 응답을 저장했습니다: {inspect_path}  (에디터로 열어서 확인하세요)")
         return
 
+    # config.yaml의 llm.api_key를 환경변수 대신 쓸 수 있게 함 (예약 실행 환경에서 환경변수 설정이 번거로워서)
+    llm_key = (cfg.get("llm") or {}).get("api_key")
+    if llm_key and not os.environ.get("ANTHROPIC_API_KEY"):
+        os.environ["ANTHROPIC_API_KEY"] = llm_key
+
     profile = build_profile(cfg, mock=args.mock)
     policies, source_counts = fetch_all_sources(cfg, profile, mock=args.mock)
     for name, info in source_counts.items():
@@ -243,6 +258,10 @@ def main():
             continue
         note = f" ({info['note']})" if info.get("note") else ""
         print(f"[수집] {name}: {info.get('count', 0)}건{note}")
+
+    if source_counts and all(info.get("error") for info in source_counts.values()):
+        print("[오류] 모든 소스 수집이 실패했습니다. 기존 결과 파일을 덮어쓰지 않고 종료합니다.")
+        sys.exit(1)
 
     results = match(policies, profile)
 
