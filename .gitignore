@@ -6,3 +6,6 @@ __pycache__/
 *.pyc
 .venv/
 logs/
+CLAUDE.md
+Claude outputs/
+docs/HANDOFF_*.md
